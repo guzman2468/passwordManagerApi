@@ -131,7 +131,7 @@ def addSite(user: User):
     new_site = {
         "name": new_site_name,
         "username": user.websites[0].site_username,
-        "password": encryption_utils.encrypt_password(user.websites[0].password),
+        "password": encryption_utils.encrypt_password(user.websites[0].site_password),
     }
 
     collection.update_one(
