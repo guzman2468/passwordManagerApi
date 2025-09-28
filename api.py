@@ -3,14 +3,9 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pymongo import MongoClient
 import os
-# from dotenv import load_dotenv
-# import certifi
 import encryption_utils
 
-# load_dotenv()
-# #retrieves database connection string from Render environment variables
 mongo_uri = os.environ.get("MONGO_URI")
-#loads env to local machine
 
 app = FastAPI()
 client = MongoClient(mongo_uri)
@@ -31,6 +26,10 @@ class User(BaseModel):
 
 @app.get("/")
 def root():
+    '''
+    Placeholder endpoint used to ensure service has started up on Render
+    :return:
+    '''
     return {"Hello" : "World"}
 
 
