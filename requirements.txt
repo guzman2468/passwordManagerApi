@@ -6,3 +6,5 @@ pydantic
 typing
 cryptography
 slowapi
+pytest
+httpx
