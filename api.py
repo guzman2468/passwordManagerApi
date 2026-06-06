@@ -1,7 +1,10 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pymongo import MongoClient
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 import os
 import encryption_utils
 
@@ -11,7 +14,13 @@ app = FastAPI()
 client = MongoClient(mongo_uri)
 
 db = client["password_manager"]
-collection = db["details"]
+collection = db["test_details"] # test database modification
+
+# prerequisites for slowapi rate limiting
+limiter = Limiter(key_func=get_remote_address)
+
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 class Website(BaseModel):
     site_name: str
@@ -27,14 +36,15 @@ class User(BaseModel):
 @app.get("/")
 def root():
     '''
-    Placeholder endpoint used to ensure service has started up on Render
+    Placeholder endpoint used to ensure service has started up
     :return:
     '''
     return {"Hello" : "World"}
 
 
 @app.post("/api/accountCreate")
-def accountCreate(user: User):
+@limiter.limit("5/minute")
+def accountCreate(request: Request, user: User):
     if user.username.strip() == "" or user.password.strip == "":
         raise HTTPException(status_code=400, detail="All fields must be filled")
     if len(user.username) < 4 or len(user.password) < 4:
@@ -55,7 +65,8 @@ def accountCreate(user: User):
     return {"message" : "Account created successfully"}
 
 @app.post("/api/login")
-def login(user: User):
+@limiter.limit("5/minute")
+def login(request: Request, user: User):
     existing_user = collection.find_one({"initial_username": user.username})
 
     if not existing_user:
@@ -70,7 +81,8 @@ def login(user: User):
 
 
 @app.get("/api/searchSites")
-def searchSites(user: User):
+@limiter.limit("35/minute")
+def searchSites(request: Request, user: User):
     '''
     This endpoint is called only after the user successfully logs in
     ensuring that data is protected and searching sites cannot occur before this
@@ -100,7 +112,8 @@ def searchSites(user: User):
 
 
 @app.post("/api/addSite")
-def addSite(user: User):
+@limiter.limit("15/minute")
+def addSite(request: Request, user: User):
     '''
     This endpoint takes in the User JSON object and parses through the list user.websites
     to get the site_name, site_username, and site_password all while verifying the site does not
@@ -140,3 +153,8 @@ def addSite(user: User):
 
     return {"message": "Website added successfully"}
 
+
+@app.get("/health")
+@limiter.limit("300/minute")
+def health(request: Request):
+    return {"status": "ok"}
