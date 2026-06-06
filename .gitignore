@@ -1,3 +1,4 @@
 .env
 setup_key.py
 secret.key
+Dockerfile
