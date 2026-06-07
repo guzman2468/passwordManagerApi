@@ -181,7 +181,6 @@ def health(request: Request):
     return {"status": "ok"}
 
 @app.get("/version")
-@limiter.limit("300/minute")
 def version():
     return {
         "version": VERSION
