@@ -7,6 +7,16 @@ from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 import os
 import encryption_utils
+import logging
+
+
+# logging prerequisites
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 mongo_uri = os.environ.get("MONGO_URI")
 
@@ -15,6 +25,7 @@ client = MongoClient(mongo_uri)
 
 db = client["password_manager"]
 collection = db["test_details"] # test database modification
+logger.info("Connected to MongoDB")
 
 # prerequisites for slowapi rate limiting
 limiter = Limiter(key_func=get_remote_address)
@@ -49,10 +60,12 @@ def accountCreate(request: Request, user: User):
         raise HTTPException(status_code=400, detail="All fields must be filled")
     if len(user.username) < 4 or len(user.password) < 4:
         raise HTTPException(status_code=400, detail="Username and password must be at least 4 characters long")
+    logger.info(f"Creating account for {user.username}")
 
     existing_user = collection.find_one({"initial_username" : user.username})
 
     if existing_user:
+        logger.warning(f"Duplicate account attempt: {user.username}")
         raise HTTPException(status_code=400, detail="Username is already taken")
 
     document = ({
@@ -62,6 +75,7 @@ def accountCreate(request: Request, user: User):
     })
 
     collection.insert_one(document)
+    logger.info(f"Account created: {user.username}")
     return {"message" : "Account created successfully"}
 
 @app.post("/api/login")
@@ -70,13 +84,17 @@ def login(request: Request, user: User):
     existing_user = collection.find_one({"initial_username": user.username})
 
     if not existing_user:
+        logger.warning(f"Failed to find account for {user.username}")
         raise HTTPException(status_code=400, detail="Username not found")
 
     encrypted_password = existing_user["initial_password"]
     decrypted_password = encryption_utils.decrypt_password(encrypted_password)
 
     if decrypted_password != user.password:
+        logger.warning(f"Failed login: {user.username}")
         raise HTTPException(status_code=400, detail="Incorrect password")
+
+    logger.info(f"Successful login: {user.username}")
     return {"message" : "placeholder"}
 
 
@@ -126,15 +144,18 @@ def addSite(request: Request, user: User):
         {"websites": 1}
     )
     if not existing_user:
+        logger.info("No user found with those credentials")
         raise HTTPException(status_code=400, detail="No user found with those credentials")
 
     if not user.websites or user.websites[0].site_name is None:
+        logger.info(f"Missing site_name field for {user.username}") # potential security issue, exposing usernames
         raise HTTPException(status_code=400, detail="websites.site_name is missing")
 
     new_site_name = user.websites[0].site_name
 
     for website in existing_user.get("websites", []):
         if website["name"] == new_site_name:
+            logger.info(f"Site already exists for {new_site_name}")
             raise HTTPException(
                 status_code=400,
                 detail="Website already entered. Please choose a new site to add."
@@ -149,6 +170,10 @@ def addSite(request: Request, user: User):
     collection.update_one(
         {"initial_username": user.username},
         {"$push": {"websites": new_site}}
+    )
+    logger.info(
+        f"Site added for user {user.username}: " # potential security issue, exposing usernames
+        f"{user.websites[0].site_name}"
     )
 
     return {"message": "Website added successfully"}

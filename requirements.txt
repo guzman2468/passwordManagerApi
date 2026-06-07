@@ -8,3 +8,4 @@ cryptography
 slowapi
 pytest
 httpx
+logging
