@@ -5,10 +5,13 @@ from pymongo import MongoClient
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
 import os
 import encryption_utils
 import logging
 
+VERSION = "1.0.0"
 
 # logging prerequisites
 logging.basicConfig(
@@ -32,6 +35,8 @@ limiter = Limiter(key_func=get_remote_address)
 
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+
+logger.info(f"Password Manager API v{VERSION} started")
 
 class Website(BaseModel):
     site_name: str
@@ -60,7 +65,6 @@ def accountCreate(request: Request, user: User):
         raise HTTPException(status_code=400, detail="All fields must be filled")
     if len(user.username) < 4 or len(user.password) < 4:
         raise HTTPException(status_code=400, detail="Username and password must be at least 4 characters long")
-    logger.info(f"Creating account for {user.username}")
 
     existing_user = collection.find_one({"initial_username" : user.username})
 
@@ -75,7 +79,6 @@ def accountCreate(request: Request, user: User):
     })
 
     collection.insert_one(document)
-    logger.info(f"Account created: {user.username}")
     return {"message" : "Account created successfully"}
 
 @app.post("/api/login")
@@ -94,7 +97,6 @@ def login(request: Request, user: User):
         logger.warning(f"Failed login: {user.username}")
         raise HTTPException(status_code=400, detail="Incorrect password")
 
-    logger.info(f"Successful login: {user.username}")
     return {"message" : "placeholder"}
 
 
@@ -144,7 +146,6 @@ def addSite(request: Request, user: User):
         {"websites": 1}
     )
     if not existing_user:
-        logger.info("No user found with those credentials")
         raise HTTPException(status_code=400, detail="No user found with those credentials")
 
     if not user.websites or user.websites[0].site_name is None:
@@ -155,7 +156,6 @@ def addSite(request: Request, user: User):
 
     for website in existing_user.get("websites", []):
         if website["name"] == new_site_name:
-            logger.info(f"Site already exists for {new_site_name}")
             raise HTTPException(
                 status_code=400,
                 detail="Website already entered. Please choose a new site to add."
@@ -171,10 +171,6 @@ def addSite(request: Request, user: User):
         {"initial_username": user.username},
         {"$push": {"websites": new_site}}
     )
-    logger.info(
-        f"Site added for user {user.username}: " # potential security issue, exposing usernames
-        f"{user.websites[0].site_name}"
-    )
 
     return {"message": "Website added successfully"}
 
@@ -183,3 +179,24 @@ def addSite(request: Request, user: User):
 @limiter.limit("300/minute")
 def health(request: Request):
     return {"status": "ok"}
+
+@app.get("/version")
+@limiter.limit("300/minute")
+def version():
+    return {
+        "version": VERSION
+    }
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request, exc):
+
+    ip = request.client.host
+
+    logger.warning(
+        f"Rate limit exceeded | IP={ip} | PATH={request.url.path}"
+    )
+
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded"}
+    )
