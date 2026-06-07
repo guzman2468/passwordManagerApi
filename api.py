@@ -185,17 +185,3 @@ def version():
     return {
         "version": VERSION
     }
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request, exc):
-
-    ip = request.client.host
-
-    logger.warning(
-        f"Rate limit exceeded | IP={ip} | PATH={request.url.path}"
-    )
-
-    return JSONResponse(
-        status_code=429,
-        content={"detail": "Rate limit exceeded"}
-    )
