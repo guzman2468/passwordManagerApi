@@ -5,8 +5,6 @@ from pymongo import MongoClient
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.errors import RateLimitExceeded
-from fastapi.responses import JSONResponse
 import os
 import encryption_utils
 import logging
